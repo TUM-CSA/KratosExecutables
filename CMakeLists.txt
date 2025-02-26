@@ -1,9 +1,32 @@
-project(BenchmarkApplication CXX)
+cmake_minimum_required(VERSION 3.20)
+project(KratosExecutables CXX)
 
-find_package(benchmark REQUIRED)
+# fetching the kratos source dir
+if(NOT DEFINED KRATOS_SOURCE_DIR)
+    message(FATAL_ERROR "KRATOS_SOURCE_DIR cmake variable is not defined. Please set it to Kratos source root.")
+elseif(${KRATOS_SOURCE_DIR} STREQUAL "")
+    message(FATAL_ERROR "KRATOS_SOURCE_DIR cmake variable is empty. Please set it to Kratos source root.")
+elseif(NOT IS_DIRECTORY ${KRATOS_SOURCE_DIR})
+    message(FATAL_ERROR "The Kratos source directory ${KRATOS_SOURCE_DIR} not found.")
+else()
+    message(STATUS "Fetching Kratos source files from ${KRATOS_SOURCE_DIR}...")
+endif()
+
+# fetching the kratos library installation dir
+if(NOT DEFINED KRATOS_LIBRARY_DIR)
+    message(FATAL_ERROR "KRATOS_LIBRARY_DIR cmake variable is not defined. Please set it to Kratos library dir.")
+elseif(${KRATOS_LIBRARY_DIR} STREQUAL "")
+    message(FATAL_ERROR "KRATOS_LIBRARY_DIR cmake variable is empty. Please set it to Kratos library dir.")
+elseif(NOT IS_DIRECTORY ${KRATOS_LIBRARY_DIR})
+    message(FATAL_ERROR "The Kratos library directory ${KRATOS_LIBRARY_DIR} not found.")
+else()
+    message(STATUS "Linking Kratos libraries files from ${KRATOS_LIBRARY_DIR}...")
+endif()
 
 # Generate sources from templates
 file(GLOB source_templates "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp.in")
+
+set(EXECUTABLES_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 foreach(source_template ${source_templates})
     # Configure and output to intermediate file (read-write permissions)
@@ -16,16 +39,9 @@ foreach(source_template ${source_templates})
          FILE_PERMISSIONS OWNER_READ GROUP_READ WORLD_READ)
 endforeach()
 
-file(GLOB sources ${CMAKE_CURRENT_SOURCE_DIR}/src/impl/*.cpp)
-file(GLOB drivers ${CMAKE_CURRENT_SOURCE_DIR}/src/drivers/*.cpp)
+# file(GLOB drivers ${CMAKE_CURRENT_SOURCE_DIR}/src/drivers/*.cpp)
+file(GLOB drivers LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/src/drivers/*)
 
 foreach(driver ${drivers})
-    get_filename_component(driver_name "${driver}" NAME_WE)
-    add_executable(${driver_name} ${sources} ${driver})
-    target_link_libraries(${driver_name} PRIVATE
-                          KratosCore
-                          benchmark::benchmark)
-    target_include_directories(${driver_name} PRIVATE
-                               "${KRATOS_SOURCE_DIR}/kratos"
-                               "${CMAKE_CURRENT_SOURCE_DIR}/src/include")
+    add_subdirectory(${driver})
 endforeach()
