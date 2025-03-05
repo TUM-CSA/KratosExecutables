@@ -38,18 +38,17 @@ void AddNewNodesRecursively(
     const NodePairMidPointIdMap& rNodePairIdMap,
     const ModelPart& rInputModelPart)
 {
+    std::vector<Node::Pointer> nodes_to_be_added;
+    for (const auto& r_pair : rNodePairIdMap) {
+        if (rInputModelPart.HasNode(r_pair.first.first->Id()) && rInputModelPart.HasNode(r_pair.first.second->Id())) {
+            nodes_to_be_added.push_back(r_pair.second);
+        }
+    }
+    rOutputModelPart.Nodes().insert(nodes_to_be_added.begin(), nodes_to_be_added.end());
+
     for (const auto& r_sub_model_part_name : rInputModelPart.GetSubModelPartNames()) {
         auto& r_output_sub_model_part = rOutputModelPart.GetSubModelPart(r_sub_model_part_name);
         const auto& r_input_sub_model_part = rInputModelPart.GetSubModelPart(r_sub_model_part_name);
-
-        std::vector<Node::Pointer> nodes_to_be_added;
-        for (const auto& r_pair : rNodePairIdMap) {
-            if (rInputModelPart.HasNode(r_pair.first.first->Id()) && rInputModelPart.HasNode(r_pair.first.second->Id())) {
-                nodes_to_be_added.push_back(r_pair.second);
-            }
-        }
-        r_output_sub_model_part.Nodes().insert(nodes_to_be_added.begin(), nodes_to_be_added.end());
-
         AddNewNodesRecursively(r_output_sub_model_part, rNodePairIdMap, r_input_sub_model_part);
     }
 }
