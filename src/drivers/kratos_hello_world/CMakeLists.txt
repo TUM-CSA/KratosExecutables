@@ -10,5 +10,6 @@ target_include_directories(
                             "${KRATOS_SOURCE_DIR}/external_libraries")
 
 target_link_libraries(kratos_hello_world PRIVATE "${KRATOS_LIBRARY_DIR}/libKratosCore.so")
+set_target_properties(kratos_hello_world PROPERTIES INSTALL_RPATH "${KRATOS_LIBRARY_DIR}")
 
 install(TARGETS kratos_hello_world)

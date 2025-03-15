@@ -13,5 +13,6 @@ target_include_directories(
                             "${CMAKE_CURRENT_SOURCE_DIR}/external_includes")
 
 target_link_libraries(kratos_kd_tree_benchmark PRIVATE "${KRATOS_LIBRARY_DIR}/libKratosCore.so" benchmark::benchmark)
+set_target_properties(kratos_kd_tree_benchmark PROPERTIES INSTALL_RPATH "${KRATOS_LIBRARY_DIR}")
 
 install(TARGETS kratos_kd_tree_benchmark)

@@ -95,18 +95,14 @@ using NanoFlannKDTreeIndexType = nanoflann::KDTreeSingleIndexAdaptor<NanoFlannDi
 void NanoFlannKDTreeBuild(benchmark::State& rState)
 {
     const std::size_t leaf_size = 10;
+    EntityPointVectorType points;
+    const std::size_t input_size = rState.range(0);
+    CreatePoints(points, input_size);
+
+    NanoFlannEntityAdapter adapter(points);
+    NanoFlannKDTreeIndexType index(3, adapter, nanoflann::KDTreeSingleIndexAdaptorParams(leaf_size, nanoflann::KDTreeSingleIndexAdaptorFlags::None, 0));
+
     for (auto _ : rState) {
-        const std::size_t input_size = rState.range(0);
-
-        EntityPointVectorType points;
-
-        rState.PauseTiming();
-        CreatePoints(points, input_size);
-        rState.ResumeTiming();
-
-        NanoFlannEntityAdapter adapter(points);
-
-        NanoFlannKDTreeIndexType index(3, adapter, nanoflann::KDTreeSingleIndexAdaptorParams(leaf_size, nanoflann::KDTreeSingleIndexAdaptorFlags::None, 0));
         index.buildIndex();
 
         rState.PauseTiming();
@@ -119,18 +115,14 @@ void NanoFlannKDTreeBuild(benchmark::State& rState)
 void NanoFlannKDTreeSearch(benchmark::State& rState)
 {
     const std::size_t leaf_size = 10;
+    const std::size_t input_size = rState.range(0);
+    EntityPointVectorType points;
+    CreatePoints(points, input_size);
+    NanoFlannEntityAdapter adapter(points);
+    NanoFlannKDTreeIndexType index(3, adapter, nanoflann::KDTreeSingleIndexAdaptorParams(leaf_size, nanoflann::KDTreeSingleIndexAdaptorFlags::None, 0));
+    index.buildIndex();
+
     for (auto _ : rState) {
-        const std::size_t input_size = rState.range(0);
-
-        EntityPointVectorType points;
-
-        rState.PauseTiming();
-        CreatePoints(points, input_size);
-        NanoFlannEntityAdapter adapter(points);
-        NanoFlannKDTreeIndexType index(3, adapter, nanoflann::KDTreeSingleIndexAdaptorParams(leaf_size, nanoflann::KDTreeSingleIndexAdaptorFlags::None, 0));
-        index.buildIndex();
-        rState.ResumeTiming();
-
         // now search for everything
         Kratos::block_for_each(points, NanoFlannResultVectorType(), [&index](const auto& pPoint, auto& rTLS) {
             index.radiusSearch(pPoint->mPosition.data().begin(), 0.5 * 0.5, rTLS, nanoflann::SearchParameters());
@@ -162,38 +154,40 @@ struct KratosKDtreeResults
 void KratosKDTreeBuild(benchmark::State& rState)
 {
     const std::size_t leaf_size = 10;
+    const std::size_t input_size = rState.range(0);
+
+    EntityPointVectorType points;
+    CreatePoints(points, input_size);
+
+    std::unique_ptr<KratosKDTreeType> p_index;
+
     for (auto _ : rState) {
-        const std::size_t input_size = rState.range(0);
-
-        EntityPointVectorType points;
+        p_index = std::make_unique<KratosKDTreeType>(points.begin(), points.end(), leaf_size);
 
         rState.PauseTiming();
-        CreatePoints(points, input_size);
-        rState.ResumeTiming();
-
-        KratosKDTreeType index(points.begin(), points.end(), leaf_size);
-
-        rState.PauseTiming();
-        EntityPointVectorType neighbours(10000);
-        std::vector<double> distances(10000);
-        index.SearchInRadius(*points.front(), 0.5, neighbours.begin(), distances.begin(), 10000);
+        Entity point {0ul, Kratos::array_1d<double,3>{1.0, 1.0, 1.0}};
+        KratosKDtreeResults results(1e4);
+        p_index->SearchInRadius(point, 0.5, results.mNeighbours.begin(), results.mDistances.begin(), 1e4);
         rState.ResumeTiming();
     }
+
+    EntityPointVectorType neighbours(10000);
+    std::vector<double> distances(10000);
+    p_index->SearchInRadius(*points.front(), 0.5, neighbours.begin(), distances.begin(), 10000);
 }
 
 void KratosKDTreeSearch(benchmark::State& rState)
 {
     const std::size_t leaf_size = 10;
+    const std::size_t input_size = rState.range(0);
+
+    EntityPointVectorType points;
+    CreatePoints(points, input_size);
+    KratosKDTreeType index(points.begin(), points.end(), leaf_size);
+
+    std::vector<Entity::Pointer> search_points(100, points.front());
+
     for (auto _ : rState) {
-        const std::size_t input_size = rState.range(0);
-
-        EntityPointVectorType points;
-
-        rState.PauseTiming();
-        CreatePoints(points, input_size);
-        KratosKDTreeType index(points.begin(), points.end(), leaf_size);
-        rState.ResumeTiming();
-
         // now search for everything
         Kratos::block_for_each(points, KratosKDtreeResults(10000), [&index](const auto& pPoint, auto& rTLS) {
             index.SearchInRadius(*pPoint, 0.5, rTLS.mNeighbours.begin(), rTLS.mDistances.begin(), 10000);
@@ -203,10 +197,15 @@ void KratosKDTreeSearch(benchmark::State& rState)
 }
 
 
-BENCHMARK(NanoFlannKDTreeBuild) -> RangeMultiplier(4) -> Range(1, 256);
-BENCHMARK(NanoFlannKDTreeSearch) -> RangeMultiplier(4) -> Range(1, 256);
+//BENCHMARK(NanoFlannKDTreeBuild) -> RangeMultiplier(4) -> Range(1, 256);
+//BENCHMARK(NanoFlannKDTreeSearch) -> RangeMultiplier(4) -> Range(1, 256);
 
-BENCHMARK(KratosKDTreeBuild) -> RangeMultiplier(4) -> Range(1, 256);
-BENCHMARK(KratosKDTreeSearch) -> RangeMultiplier(4) -> Range(1, 256);
+//BENCHMARK(KratosKDTreeBuild) -> RangeMultiplier(4) -> Range(1, 256);
+//BENCHMARK(KratosKDTreeSearch) -> RangeMultiplier(4) -> Range(1, 256);
+
+BENCHMARK(NanoFlannKDTreeBuild)->Arg(256);
+
+//BENCHMARK(KratosKDTreeBuild)->Arg(256);
+//BENCHMARK(KratosKDTreeSearch)->Arg(256);
 
 BENCHMARK_MAIN();

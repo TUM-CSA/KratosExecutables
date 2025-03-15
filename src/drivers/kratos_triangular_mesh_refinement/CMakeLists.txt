@@ -10,6 +10,9 @@ target_include_directories(
                             "${KRATOS_SOURCE_DIR}/external_libraries"
                             "${KRATOS_SOURCE_DIR}/applications/StructuralMechanicsApplication")
 
-target_link_libraries(kratos_triangular_mesh_refinement PRIVATE "${KRATOS_LIBRARY_DIR}/libKratosCore.so" "${KRATOS_LIBRARY_DIR}/libKratosStructuralMechanicsCore.so")
+target_link_libraries(kratos_triangular_mesh_refinement PRIVATE
+                      "${KRATOS_LIBRARY_DIR}/libKratosCore.so"
+                      "${KRATOS_LIBRARY_DIR}/libKratosStructuralMechanicsCore.so")
+set_target_properties(kratos_triangular_mesh_refinement PROPERTIES INSTALL_RPATH "${KRATOS_LIBRARY_DIR}")
 
 install(TARGETS kratos_triangular_mesh_refinement)
