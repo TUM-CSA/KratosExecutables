@@ -16,5 +16,6 @@ target_include_directories(kratos_distance_benchmark PRIVATE
 target_link_libraries(kratos_distance_benchmark PRIVATE
                         "${KRATOS_LIBRARY_DIR}/libKratosCore.so"
                         benchmark::benchmark)
+set_target_properties(kratos_distance_benchmark PROPERTIES INSTALL_RPATH "${KRATOS_LIBRARY_DIR}")
 
 install(TARGETS kratos_distance_benchmark)

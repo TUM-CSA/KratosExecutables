@@ -1,11 +1,9 @@
 /*
+
 !.gitignore
 !.gitattributes
 !CMakeLists.txt
-!custom_utilities
-!drivers/*cpp
 
 !src
 !include
-!data
-!custom_utilities
+!scripts
