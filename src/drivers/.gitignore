@@ -8,3 +8,4 @@
 !kratos_mdpa_scale_dimensions
 !kratos_mdpa_visualization
 !kratos_triangular_mesh_refinement
+!linearize_mesh

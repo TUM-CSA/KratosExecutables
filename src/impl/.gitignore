@@ -1,3 +1,6 @@
 /*
 !.gitignore
-!common.hpp
+!*.cpp
+
+!ApplicationLoader.cpp.in
+ApplicationLoader.cpp
