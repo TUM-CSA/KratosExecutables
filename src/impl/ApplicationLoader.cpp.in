@@ -1,0 +1,117 @@
+/// @author Máté Kelemen
+
+// --- Internal Includes ---
+#include "KratosExecutables/ApplicationLoader.hpp" // ApplicationLoader
+
+// --- Core Includes ---
+#include "includes/kratos_application.h" // KratosApplication
+
+// --- OS Includes ---
+#include <dlfcn.h>
+
+// --- STL Includes ---
+#include <unordered_map> // std::unordered_map
+#include <memory> // std::unique_ptr
+#include <filesystem> // std::filesystem::path
+#include <optional> // std::optional
+
+
+namespace Kratos::Executables {
+
+
+struct ApplicationLoader::Impl
+{
+    static bool EndsWith(const std::string& rTarget, const std::string& rSuffix)
+    {
+        return rTarget.size() >= rSuffix.size() && rTarget.compare(rTarget.size()-rSuffix.size(), rSuffix.size(), rSuffix) == 0;
+    }
+
+    static std::string Strip(const std::string& rApplicationName)
+    {
+        const std::string application_suffix = "Application";
+        if (Impl::EndsWith(rApplicationName, application_suffix)) {
+            return rApplicationName.substr(0, rApplicationName.size() - application_suffix.size());
+        } else {
+            return rApplicationName;
+        }
+    }
+
+    std::optional<std::filesystem::path> FindLibrary(const std::string& rLibraryName)
+    {
+        const std::filesystem::path library_directory = "@KRATOS_LIBRARY_DIR@";
+        const std::string library_prefix = "@KRATOSEXECUTABLES_LIBRARY_PREFIX@";
+        const std::string library_suffix = "@KRATOSEXECUTABLES_LIBRARY_SUFFIX@";
+
+        std::filesystem::path candidate;
+
+        if (rLibraryName == "Kratos" or rLibraryName == "KratosCore") {
+            candidate = library_directory / (library_prefix + library_suffix);
+        } else if (rLibraryName == "KratosMPI" or rLibraryName == "KratosMPICore") {
+            candidate = library_directory / (library_prefix + "MPI" + library_suffix);
+        } else if (this->EndsWith(rLibraryName, "Application")) {
+            candidate = library_directory / (library_prefix + this->Strip(rLibraryName) + library_suffix);
+        }
+
+        return std::filesystem::exists(candidate) ? candidate : std::optional<std::filesystem::path> {};
+    }
+
+    static std::string GetApplicationClassName(const std::string& rApplicationName)
+    {
+        if (rApplicationName == "Kratos" or rApplicationName == "KratosCore") {
+            return "KratosApplication";
+        } else if (rApplicationName == "KratosMPI" or rApplicationName == "KratosMPICore") {
+            KRATOS_ERROR << "The Kratos MPI extension has no application class to register.";
+        } else if (Impl::EndsWith(rApplicationName, "Application")) {
+            return "Kratos" + rApplicationName;
+        }
+
+        KRATOS_ERROR << "Cannot deduce application class name of " << rApplicationName;
+    }
+
+    std::unordered_map<
+        std::string,                        //< Application name.
+        std::unique_ptr<KratosApplication>  //< Application.
+    > mpLoadedApplications;
+}; // struct ApplicationLoader::Impl
+
+
+ApplicationLoader::ApplicationLoader()
+    : mpImpl(new Impl)
+{
+}
+
+
+ApplicationLoader::~ApplicationLoader() = default;
+
+
+void ApplicationLoader::Load(const std::string& rApplicationName)
+{
+    const auto maybe_library_path = mpImpl->FindLibrary(rApplicationName);
+    KRATOS_ERROR_IF_NOT(maybe_library_path.has_value())
+        << "Cannot find shared library to load: " << rApplicationName;
+
+    const auto& r_library_path = maybe_library_path.value();
+    const std::string application_class_name = mpImpl->GetApplicationClassName(rApplicationName);
+
+    auto p_library = dlopen(r_library_path.string().c_str(), RTLD_NOW);
+    KRATOS_ERROR_IF_NOT(p_library) << "Failed to load " << rApplicationName << " from " << r_library_path;
+
+    /// @todo Figure out what the mangled names for the application's
+    ///       - constructor
+    ///       - ::Register
+    ///       - destructor
+    ///       are. I might also have to load all symbols from the loaded lib.
+    //auto p_constructor = dlsym(p_library, )
+    KRATOS_ERROR << "dynamic application loading is not implemented yet";
+
+    dlclose(p_library);
+}
+
+
+void ApplicationLoader::Unload(const std::string& rApplicationName)
+{
+    KRATOS_ERROR << "dynamic application loading is not implemented yet";
+}
+
+
+} // namespace Kratos::Executables
