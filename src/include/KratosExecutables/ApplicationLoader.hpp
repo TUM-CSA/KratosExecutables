@@ -19,6 +19,10 @@ public:
 
     void Unload(const std::string& rApplicationName);
 
+    void LoadAll();
+
+    void UnloadAll();
+
 private:
     struct Impl;
     std::unique_ptr<Impl> mpImpl;

@@ -6,6 +6,27 @@
 // --- Core Includes ---
 #include "includes/kratos_application.h" // KratosApplication
 
+// --- Optional Application Includes ---
+#ifdef KRATOSEXECUTABLES_HDF5
+#include "hdf5_application.h"
+#endif
+
+#ifdef KRATOSEXECUTABLES_Med
+#include "med_application.h"
+#endif
+
+#ifdef KRATOSEXECUTABLES_StructuralMechanics
+#include "structural_mechanics_application.h"
+#endif
+
+#ifdef KRATOSEXECUTABLES_ConstitutiveLaws
+#include "constitutive_laws_application.h"
+#endif
+
+#ifdef KRATOSEXECUTABLES_FluidDynamics
+#include "fluid_dynamics_application.h"
+#endif
+
 // --- OS Includes ---
 #include <dlfcn.h>
 
@@ -14,13 +35,72 @@
 #include <memory> // std::unique_ptr
 #include <filesystem> // std::filesystem::path
 #include <optional> // std::optional
+#include <vector> // std::vector
 
 
 namespace Kratos::Executables {
 
 
-struct ApplicationLoader::Impl
+namespace impl {
+
+
+class ApplicationLoader
 {
+public:
+    virtual ~ApplicationLoader() = default;
+
+    virtual void Load(const std::string& rApplicationName) = 0;
+
+    virtual void Unload(const std::string& rApplicationName) = 0;
+
+    virtual void LoadAll() = 0;
+
+    virtual void UnloadAll() = 0;
+}; // class ApplicationLoader
+
+
+class DynamicApplicationLoader final : public ApplicationLoader
+{
+public:
+    void Load(const std::string& rApplicationName) override
+    {
+        const auto maybe_library_path = this->FindLibrary(rApplicationName);
+        KRATOS_ERROR_IF_NOT(maybe_library_path.has_value())
+            << "Cannot find shared library to load: " << rApplicationName;
+
+        const auto& r_library_path = maybe_library_path.value();
+        const std::string application_class_name = this->GetApplicationClassName(rApplicationName);
+
+        auto p_library = dlopen(r_library_path.string().c_str(), RTLD_NOW);
+        KRATOS_ERROR_IF_NOT(p_library) << "Failed to load " << rApplicationName << " from " << r_library_path;
+
+        /// @todo Figure out what the mangled names for the application's
+        ///       - constructor
+        ///       - ::Register
+        ///       - destructor
+        ///       are. I might also have to load all symbols from the loaded lib.
+        //auto p_constructor = dlsym(p_library, )
+        KRATOS_ERROR << "dynamic application loading is not implemented yet";
+
+        dlclose(p_library);
+    }
+
+    void Unload(const std::string& rApplicationName) override
+    {
+        KRATOS_ERROR << "dynamic application loading is not implemented yet";
+    }
+
+    void LoadAll() override
+    {
+        KRATOS_ERROR << "dynamic application loading is not implemented yet";
+    }
+
+    void UnloadAll() override
+    {
+        KRATOS_ERROR << "dynamic application loading is not implemented yet";
+    }
+
+private:
     static bool EndsWith(const std::string& rTarget, const std::string& rSuffix)
     {
         return rTarget.size() >= rSuffix.size() && rTarget.compare(rTarget.size()-rSuffix.size(), rSuffix.size(), rSuffix) == 0;
@@ -29,14 +109,14 @@ struct ApplicationLoader::Impl
     static std::string Strip(const std::string& rApplicationName)
     {
         const std::string application_suffix = "Application";
-        if (Impl::EndsWith(rApplicationName, application_suffix)) {
+        if (DynamicApplicationLoader::EndsWith(rApplicationName, application_suffix)) {
             return rApplicationName.substr(0, rApplicationName.size() - application_suffix.size());
         } else {
             return rApplicationName;
         }
     }
 
-    std::optional<std::filesystem::path> FindLibrary(const std::string& rLibraryName)
+    static std::optional<std::filesystem::path> FindLibrary(const std::string& rLibraryName)
     {
         const std::filesystem::path library_directory = "@KRATOS_LIBRARY_DIR@";
         const std::string library_prefix = "@KRATOSEXECUTABLES_LIBRARY_PREFIX@";
@@ -48,8 +128,8 @@ struct ApplicationLoader::Impl
             candidate = library_directory / (library_prefix + library_suffix);
         } else if (rLibraryName == "KratosMPI" or rLibraryName == "KratosMPICore") {
             candidate = library_directory / (library_prefix + "MPI" + library_suffix);
-        } else if (this->EndsWith(rLibraryName, "Application")) {
-            candidate = library_directory / (library_prefix + this->Strip(rLibraryName) + library_suffix);
+        } else if (DynamicApplicationLoader::EndsWith(rLibraryName, "Application")) {
+            candidate = library_directory / (library_prefix + DynamicApplicationLoader::Strip(rLibraryName) + library_suffix);
         }
 
         return std::filesystem::exists(candidate) ? candidate : std::optional<std::filesystem::path> {};
@@ -61,23 +141,144 @@ struct ApplicationLoader::Impl
             return "KratosApplication";
         } else if (rApplicationName == "KratosMPI" or rApplicationName == "KratosMPICore") {
             KRATOS_ERROR << "The Kratos MPI extension has no application class to register.";
-        } else if (Impl::EndsWith(rApplicationName, "Application")) {
+        } else if (DynamicApplicationLoader::EndsWith(rApplicationName, "Application")) {
             return "Kratos" + rApplicationName;
         }
 
         KRATOS_ERROR << "Cannot deduce application class name of " << rApplicationName;
     }
+}; // class DynamicApplicationLoader
+
+
+class StaticApplicationLoader final : public ApplicationLoader
+{
+public:
+    StaticApplicationLoader()
+    {
+        for (const auto& r_application_name : this->supported_applications) {
+            mLoadedApplications.emplace(r_application_name, nullptr);
+        }
+    }
+
+    void Load(const std::string& rApplicationName) override
+    {
+        auto it = mLoadedApplications.find(rApplicationName);
+        KRATOS_ERROR_IF(it == mLoadedApplications.end())
+            << "Static loader does not support " << rApplicationName;
+
+        if (rApplicationName == "KratosCore") {
+            it->second.reset(new KratosApplication("KratosCore"));
+            return;
+        }
+
+        #ifdef KRATOSEXECUTABLES_HDF5
+        if (rApplicationName == "HDF5Application") {
+            it->second.reset(new KratosHDF5Application());
+            return;
+        }
+        #endif
+
+        #ifdef KRATOSEXECUTABLES_Med
+        if (rApplicationName == "MedApplication") {
+            it->second.reset(new KratosMedApplication());
+            return;
+        }
+        #endif
+
+        #ifdef KRATOSEXECUTABLES_StructuralMechanics
+        if (rApplicationName == "StructuralMechanicsApplication") {
+            it->second.reset(new KratosStructuralMechanicsApplication());
+            return;
+        }
+        #endif
+
+        #ifdef KRATOSEXECUTABLES_ConstitutiveLaws
+        if (rApplicationName == "ConstitutiveLawsApplication") {
+            it->second.reset(new KratosConstitutiveLawsApplication());
+            return;
+        }
+        #endif
+
+        #ifdef KRATOSEXECUTABLES_FluidDynamics
+        if (rApplicationName == "FluidDynamicsApplication") {
+            it->second.reset(new KratosFluidDynamicsApplication());
+            return;
+        }
+        #endif
+
+        KRATOS_ERROR << "Static loader does not support " << rApplicationName;
+    }
+
+    void Unload(const std::string& rApplicationName) override
+    {
+        const auto it = mLoadedApplications.find(rApplicationName);
+        if (it != mLoadedApplications.end()) {
+            it->second.reset();
+        }
+    }
+
+    void LoadAll() override
+    {
+        for (const auto& r_application_name : this->supported_applications) {
+            this->Load(r_application_name);
+        }
+    }
+
+    void UnloadAll() override
+    {
+        for (const auto& r_application_name : this->supported_applications) {
+            this->Unload(r_application_name);
+        }
+    }
+
+private:
+    static const std::vector<std::string> supported_applications;
 
     std::unordered_map<
         std::string,                        //< Application name.
         std::unique_ptr<KratosApplication>  //< Application.
-    > mpLoadedApplications;
+    > mLoadedApplications;
+}; // class StaticApplicationLoader
+
+
+const std::vector<std::string> StaticApplicationLoader::supported_applications = {
+    "KratosCore"
+
+    #ifdef KRATOSEXECUTABLES_HDF5
+    ,"HDF5Application"
+    #endif
+
+    #ifdef KRATOSEXECUTABLES_Med
+    ,"MedApplication"
+    #endif
+
+    #ifdef KRATOSEXECUTABLES_StructuralMechanics
+    ,"StructuralMechanicsApplication"
+    #endif
+
+    #ifdef KRATOSEXECUTABLES_ConstitutiveLaws
+    ,"ConstitutiveLawsApplication"
+    #endif
+
+    #ifdef KRATOSEXECUTABLES_FluidDynamics
+    ,"FluidDynamicsApplication"
+    #endif
+};
+
+
+} // namespace impl
+
+
+struct ApplicationLoader::Impl
+{
+    std::unique_ptr<impl::ApplicationLoader> mpApplicationLoader;
 }; // struct ApplicationLoader::Impl
 
 
 ApplicationLoader::ApplicationLoader()
     : mpImpl(new Impl)
 {
+    mpImpl->mpApplicationLoader.reset(new impl::StaticApplicationLoader());
 }
 
 
@@ -86,31 +287,25 @@ ApplicationLoader::~ApplicationLoader() = default;
 
 void ApplicationLoader::Load(const std::string& rApplicationName)
 {
-    const auto maybe_library_path = mpImpl->FindLibrary(rApplicationName);
-    KRATOS_ERROR_IF_NOT(maybe_library_path.has_value())
-        << "Cannot find shared library to load: " << rApplicationName;
-
-    const auto& r_library_path = maybe_library_path.value();
-    const std::string application_class_name = mpImpl->GetApplicationClassName(rApplicationName);
-
-    auto p_library = dlopen(r_library_path.string().c_str(), RTLD_NOW);
-    KRATOS_ERROR_IF_NOT(p_library) << "Failed to load " << rApplicationName << " from " << r_library_path;
-
-    /// @todo Figure out what the mangled names for the application's
-    ///       - constructor
-    ///       - ::Register
-    ///       - destructor
-    ///       are. I might also have to load all symbols from the loaded lib.
-    //auto p_constructor = dlsym(p_library, )
-    KRATOS_ERROR << "dynamic application loading is not implemented yet";
-
-    dlclose(p_library);
+    mpImpl->mpApplicationLoader->Load(rApplicationName);
 }
 
 
 void ApplicationLoader::Unload(const std::string& rApplicationName)
 {
-    KRATOS_ERROR << "dynamic application loading is not implemented yet";
+    mpImpl->mpApplicationLoader->Unload(rApplicationName);
+}
+
+
+void ApplicationLoader::LoadAll()
+{
+    mpImpl->mpApplicationLoader->LoadAll();
+}
+
+
+void ApplicationLoader::UnloadAll()
+{
+    mpImpl->mpApplicationLoader->UnloadAll();
 }
 
 

@@ -2,6 +2,7 @@
 
 // --- Internal Includes ---
 #include "KratosExecutables/ModelPartIO.hpp" // Executables::ModelPartIO
+#include "KratosExecutables/ApplicationLoader.hpp" // Executables::ApplicationLoader
 
 // --- Core Includes ---
 #include "geometries/geometry.h" // Geometry
@@ -10,9 +11,7 @@
 
 // --- STL Includes ---
 #include <iostream> // std::cout, std::cerr
-#include <vector> // std::vector
 #include <filesystem> // std::filesystem::path, std::filesystem::exists, std::filesystem::is_directory
-#include <memory> // std::unique_ptr
 
 
 void CheckRegisteredGeometry(const std::string& rGeometryName)
@@ -107,11 +106,8 @@ int main(int argc, const char** argv)
         return 1;
     }
 
-    std::vector<std::unique_ptr<Kratos::KratosApplication>> applications;
-    applications.emplace_back(new Kratos::KratosApplication("KratosCore"));
-    for (const auto& rp_application : applications) {
-        rp_application->Register();
-    }
+    Kratos::Executables::ApplicationLoader loader;
+    loader.LoadAll();
 
     const auto p_source_io = Kratos::Executables::IOFactory(source);
     const auto p_target_io = Kratos::Executables::IOFactory(target);
